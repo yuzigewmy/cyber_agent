@@ -1,0 +1,35 @@
+agent:
+  name: cyber-agent-guarded
+  default_mode: defense
+  require_scope_for_redteam: true
+  require_human_approval_for_intrusive_actions: true
+  max_retrieved_docs: 6
+
+rag:
+  backend: in_memory
+  chunk_size: 1200
+  chunk_overlap: 150
+  collections:
+    architecture: data/knowledge/architecture
+    defense: data/knowledge/defense
+    redteam: data/knowledge/offense
+
+safety:
+  redteam_output_level: high_level
+  allow_exploit_code: false
+  allow_payload_generation: false
+  allow_credential_theft: false
+  allow_evasion_or_persistence: false
+  restrict_zero_day_to_defensive_triage: true
+
+auth:
+  enabled: false
+  secret: please-change-this-secret
+  access_token_ttl_minutes: 480
+  demo_username: security-admin
+  demo_password: ChangeMe123!
+
+integrations:
+  nvd_api_key_env: NVD_API_KEY
+  cisa_kev_url_env: CISA_KEV_URL
+  epss_url_env: FIRST_EPSS_URL

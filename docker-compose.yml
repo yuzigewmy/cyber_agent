@@ -1,0 +1,23 @@
+services:
+  backend:
+    build: .
+    container_name: cyber-agent-backend
+    ports:
+      - "8000:8000"
+    environment:
+      CYBER_AGENT_CONFIG_PATH: /app/config/config.example.yaml
+      CYBER_AGENT_DATABASE_URL: sqlite:////app/data/runtime/cyber_agent.db
+      CYBER_AGENT_DEMO_PASSWORD: ${CYBER_AGENT_DEMO_PASSWORD:-ChangeMe123!}
+      CYBER_AGENT_AUTH_SECRET: ${CYBER_AGENT_AUTH_SECRET:-change-me-in-production}
+      CYBER_AGENT_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost:8080,http://127.0.0.1:8080
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config:ro
+
+  frontend:
+    build: ./frontend-vue
+    container_name: cyber-agent-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend

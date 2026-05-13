@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Cyber Agent 智能攻防助手</title>
+    <link rel="stylesheet" href="./assets/style.css" />
+  </head>
+
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-logo">C</div>
+          <div>
+            <h1>Cyber Agent</h1>
+            <p>攻防演练智库</p>
+          </div>
+        </div>
+
+        <section class="panel">
+          <label class="field">
+            <span>工作模式</span>
+            <select id="modeSelect">
+              <option value="defense">防守研判</option>
+              <option value="threat_intel">威胁情报</option>
+              <option value="redteam">授权红队</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>目标资产，可选</span>
+            <textarea
+              id="assetsInput"
+              rows="4"
+              placeholder="一行一个资产，例如：&#10;api-gateway&#10;user-service&#10;payment-system"
+            ></textarea>
+          </label>
+
+          <label class="field">
+            <span>证据 / 日志 / 告警，可选</span>
+            <textarea
+              id="evidenceInput"
+              rows="7"
+              placeholder="一行一条证据，例如：&#10;GET /.env 404&#10;GET /login?user=admin or 1=1&#10;POST /api/login 401 burst from 10.1.2.3"
+            ></textarea>
+          </label>
+
+          <div class="status-card">
+            <span class="status-dot"></span>
+            <div>
+              <strong id="apiStatus">后端未检测</strong>
+              <p id="apiBaseText">API 自动识别中</p>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <section class="chat-layout">
+        <header class="chat-header">
+          <div>
+            <p class="eyebrow">Enterprise Security Copilot</p>
+            <h2>智能攻防演练助手</h2>
+          </div>
+
+          <button id="clearButton" class="secondary-button">
+            清空对话
+          </button>
+        </header>
+
+        <section id="messages" class="messages">
+          <div class="welcome-card">
+            <div class="welcome-icon">✦</div>
+            <h3>开始安全研判</h3>
+            <p>
+              输入攻击流量、告警日志、资产信息或安全问题，系统会调用后端
+              <code>/v1/chat</code>
+              接口，并将大模型返回内容展示在这里。
+            </p>
+
+            <div class="quick-prompts">
+              <button data-prompt="请研判这些流量是否存在攻击行为，并给出处置建议。">
+                流量研判
+              </button>
+              <button data-prompt="请根据资产和证据生成应急响应处置方案。">
+                应急响应
+              </button>
+              <button data-prompt="请分析这些资产可能存在的版本漏洞风险。">
+                漏洞分析
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <footer class="composer">
+          <textarea
+            id="questionInput"
+            rows="1"
+            placeholder="请输入你的问题，例如：请研判这些流量并给出处置建议"
+          ></textarea>
+
+          <button id="sendButton" class="primary-button">
+            发送
+          </button>
+        </footer>
+      </section>
+    </main>
+
+    <script src="assets/config.js"></script>
+    <script src="assets/app.js"></script>
+  </body>
+</html>
