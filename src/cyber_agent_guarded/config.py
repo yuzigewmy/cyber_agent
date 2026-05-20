@@ -44,7 +44,7 @@ class SafetySettings(BaseModel):
 
 
 class AuthSettings(BaseModel):
-    enabled: bool = True
+    enabled: bool = Field(default_factory=lambda: _env_bool("CYBER_AGENT_AUTH_ENABLED", True))
     demo_username: str = "security-admin"
     demo_password_env: str = "CYBER_AGENT_DEMO_PASSWORD"
     secret_env: str = "CYBER_AGENT_AUTH_SECRET"
@@ -86,6 +86,13 @@ class Settings(BaseModel):
     @property
     def epss_url(self) -> str:
         return os.getenv(self.integrations.epss_url_env, "https://api.first.org/data/v1/epss")
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @lru_cache(maxsize=1)

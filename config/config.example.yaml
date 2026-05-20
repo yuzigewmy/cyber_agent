@@ -23,7 +23,7 @@ safety:
   restrict_zero_day_to_defensive_triage: true
 
 auth:
-  enabled: false
+  enabled: true
   secret: please-change-this-secret
   access_token_ttl_minutes: 480
   demo_username: security-admin

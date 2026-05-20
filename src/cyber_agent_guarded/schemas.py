@@ -60,6 +60,7 @@ class AgentResponse(BaseModel):
     retrieved_contexts: list[RetrievedContext] = Field(default_factory=list)
     policy_reasons: list[str] = Field(default_factory=list)
     requires_human_approval: bool = False
+    trace: dict[str, Any] = Field(default_factory=dict)
 
 
 class LoginRequest(BaseModel):

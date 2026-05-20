@@ -15,6 +15,7 @@ from cyber_agent_guarded.schemas import (
     RetrievedContext,
 )
 from cyber_agent_guarded.tools.attack_mapping import AttackPathModeler
+from cyber_agent_guarded.tools.registry import ToolRegistry, default_tool_registry
 from cyber_agent_guarded.tools.runbook import RunbookComposer
 from cyber_agent_guarded.tools.traffic import TrafficAnalyzer, highest_severity
 
@@ -37,6 +38,7 @@ class GraphState(TypedDict, total=False):
     llm_provider: str
     llm_error: str | None
     policy_reasons: list[str]
+    trace: dict[str, Any]
 
 
 class CyberAgent:
@@ -56,15 +58,21 @@ class CyberAgent:
       agent.handle(request)
     """
 
-    def __init__(self, settings: Settings | None = None, base_dir: str = ".") -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        base_dir: str = ".",
+        tools: ToolRegistry | None = None,
+    ) -> None:
         self.settings = settings or load_settings()
         self.kb = build_in_memory_kb(self.settings.rag, base_dir=base_dir)
         self.policy = PolicyEngine(
             require_scope_for_redteam=self.settings.agent.require_scope_for_redteam
         )
-        self.traffic = TrafficAnalyzer()
-        self.runbook = RunbookComposer()
-        self.attack_modeler = AttackPathModeler()
+        self.tools = tools or default_tool_registry()
+        self.traffic = cast(TrafficAnalyzer, self.tools.get("traffic_analyzer"))
+        self.runbook = cast(RunbookComposer, self.tools.get("runbook_composer"))
+        self.attack_modeler = cast(AttackPathModeler, self.tools.get("attack_path_modeler"))
         self.llm = LLMClient()
         self.graph: Any | None = None
 
@@ -130,6 +138,11 @@ class CyberAgent:
             "route": route,
             "findings": state.get("findings", []),
             "actions": state.get("actions", []),
+            "trace": {
+                "route": route,
+                "nodes": ["classify_intent"],
+                "tool_capabilities": self.tools.capabilities(),
+            },
         }
 
     def _node_retrieve_contexts(self, state: GraphState) -> GraphState:
@@ -145,6 +158,11 @@ class CyberAgent:
         return {
             **state,
             "contexts": contexts,
+            "trace": self._append_trace(
+                state,
+                "retrieve_contexts",
+                {"retrieved_contexts": len(contexts)},
+            ),
         }
 
     def _node_policy_gate(self, state: GraphState) -> GraphState:
@@ -157,6 +175,15 @@ class CyberAgent:
             **state,
             "decision": decision,
             "policy_reasons": decision.reasons,
+            "trace": self._append_trace(
+                state,
+                "policy_gate",
+                {
+                    "allowed": decision.allowed,
+                    "requires_human_approval": decision.requires_human_approval,
+                    "restricted_context": decision.restricted_context,
+                },
+            ),
         }
 
     def _node_defense_analyzer(self, state: GraphState) -> GraphState:
@@ -169,6 +196,11 @@ class CyberAgent:
             **state,
             "findings": findings,
             "severity": severity,
+            "trace": self._append_trace(
+                state,
+                "defense_analyzer",
+                {"findings": len(findings), "severity": severity},
+            ),
         }
 
     def _node_threat_intel_analyzer(self, state: GraphState) -> GraphState:
@@ -216,6 +248,11 @@ class CyberAgent:
             **state,
             "findings": findings,
             "severity": highest_severity(findings) if findings else "info",
+            "trace": self._append_trace(
+                state,
+                "threat_intel_analyzer",
+                {"findings": len(findings)},
+            ),
         }
 
     def _node_redteam_planner(self, state: GraphState) -> GraphState:
@@ -246,6 +283,11 @@ class CyberAgent:
             **state,
             "findings": findings,
             "severity": highest_severity(findings) if findings else "info",
+            "trace": self._append_trace(
+                state,
+                "redteam_planner",
+                {"findings": len(findings)},
+            ),
         }
 
     def _node_runbook_composer(self, state: GraphState) -> GraphState:
@@ -269,6 +311,11 @@ class CyberAgent:
         return {
             **state,
             "actions": actions,
+            "trace": self._append_trace(
+                state,
+                "runbook_composer",
+                {"actions": len(actions)},
+            ),
         }
 
     def _node_response_composer(self, state: GraphState) -> GraphState:
@@ -283,13 +330,15 @@ class CyberAgent:
                 blocked=True,
                 severity="info",
                 answer=(
-                    "当前请求被安全策略拦截：请求缺少必要授权范围，或包含可能直接用于攻击执行的操作细节。"
-                    "系统可以继续提供防守研判、风险分析、修复建议、检测方案和审批化演练规划。"
+                    "当前请求被安全策略拦截：请求缺少必要授权范围，或包含可能直接用于"
+                    "攻击执行的操作细节。系统可以继续提供防御研判、风险分析、修复建议、"
+                    "检测方案和审批化演练规划。"
                 ),
                 citations=[context.source for context in contexts],
                 retrieved_contexts=contexts,
                 policy_reasons=decision.reasons,
                 requires_human_approval=decision.requires_human_approval,
+                trace=self._append_trace(state, "response_composer", {"blocked": True}),
             )
             return {
                 **state,
@@ -318,7 +367,7 @@ class CyberAgent:
             restricted_context=restricted_context,
         )
 
-        if llm_result.provider == "openai" and llm_result.content:
+        if llm_result.provider == "qwen" and llm_result.content:
             answer = llm_result.content
         else:
             answer = (
@@ -328,6 +377,12 @@ class CyberAgent:
             )
             if llm_result.error:
                 answer += f"\n\n错误信息：{llm_result.error}"
+
+        if request.mode == AgentMode.redteam and "exploit payloads" not in answer:
+            answer += (
+                "\n\nSafety boundary: output intentionally excludes exploit payloads, "
+                "evasion, persistence, credential theft, or weaponized 0day steps."
+            )
 
         severity = cast(
             Any,
@@ -347,6 +402,15 @@ class CyberAgent:
             requires_human_approval=(
                 decision.requires_human_approval if decision is not None else False
             ),
+            trace=self._append_trace(
+                state,
+                "response_composer",
+                {
+                    "blocked": False,
+                    "llm_provider": llm_result.provider,
+                    "llm_error": llm_result.error,
+                },
+            ),
         )
 
         return {
@@ -359,6 +423,20 @@ class CyberAgent:
             "response": response,
         }
 
+    @staticmethod
+    def _append_trace(
+        state: GraphState,
+        node: str,
+        details: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        trace = dict(state.get("trace", {}))
+        nodes = list(trace.get("nodes", []))
+        nodes.append(node)
+        trace["nodes"] = nodes
+        if details:
+            trace[node] = details
+        return trace
+
     def _synthesize_with_llm(
         self,
         *,
@@ -370,26 +448,26 @@ class CyberAgent:
         restricted_context: bool,
     ):
         system_prompt = """
-你是企业级网络安全攻防演练智库 Agent。
+你是企业级网络安全攻防演练智能 Agent。
 
-你的任务：
-1. 基于用户问题、内部知识库上下文、工具分析结果，输出清晰、专业、可落地的安全分析。
-2. 防守模式下，重点输出攻击流量研判、影响分析、应急响应、处置动作和修复建议。
-3. 威胁情报模式下，重点输出漏洞优先级、资产影响、修复 SLA 和检测建议。
-4. 授权红队模式下，只输出高层路径建模、验证计划、审批点和蓝队检测建议。
+任务：
+1. 基于用户问题、内部知识库上下文和工具分析结果，输出清晰、专业、可落地的安全分析。
+2. 防御模式重点输出攻击流量研判、影响分析、应急响应、处置动作和修复建议。
+3. 威胁情报模式重点输出漏洞优先级、资产影响、修复 SLA 和检测建议。
+4. 授权红队模式只输出高层路径建模、验证计划、审批点和蓝队检测建议。
 
 安全边界：
 - 不输出 exploit payload。
 - 不输出武器化 0day 利用步骤。
 - 不输出凭据窃取、免杀、持久化、横向移动实操细节。
 - 不输出绕过 EDR/WAF/MFA/检测的操作步骤。
-- 如涉及高风险内容，只给防守、检测、修复、审批化验证建议。
+- 如涉及高风险内容，只给防御、检测、修复和审批化验证建议。
 
 输出风格：
 - 使用中文。
 - 分层清晰。
 - 结论先行。
-- 给出可执行但安全的防守或演练管理动作。
+- 给出可执行但安全的防御或演练管理动作。
 - 保留引用来源名称。
 """
 
@@ -404,10 +482,7 @@ class CyberAgent:
             for context in contexts
         ]
 
-        finding_payload = [
-            finding.model_dump(mode="json")
-            for finding in findings
-        ]
+        finding_payload = [finding.model_dump(mode="json") for finding in findings]
 
         user_payload = {
             "mode": request.mode.value,

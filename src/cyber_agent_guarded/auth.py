@@ -192,11 +192,17 @@ def authenticate_demo_user(
     return None
 
 
-def get_current_user_factory(settings: Settings):
+def get_current_user_factory(settings: Settings | None = None):
     def _get_current_user(
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     ) -> AuthenticatedUser:
-        if not settings.auth.enabled:
+        resolved_settings = settings
+        if resolved_settings is None:
+            from cyber_agent_guarded.runtime import get_settings
+
+            resolved_settings = get_settings()
+
+        if not resolved_settings.auth.enabled:
             return AuthenticatedUser(
                 user_id="anonymous",
                 username="anonymous",
@@ -209,6 +215,6 @@ def get_current_user_factory(settings: Settings):
                 detail="Missing bearer token.",
             )
 
-        return verify_access_token(credentials.credentials, settings)
+        return verify_access_token(credentials.credentials, resolved_settings)
 
     return _get_current_user

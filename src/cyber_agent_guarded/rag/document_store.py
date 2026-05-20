@@ -164,19 +164,22 @@ class OptionalLangChainChromaFactory:
     """
 
     @staticmethod
-    def create_retriever(documents: list[RAGDocument], persist_dir: str = ".chroma"):
+    def create_retriever(
+        documents: list[RAGDocument],
+        *,
+        embeddings: object,
+        persist_dir: str = ".chroma",
+    ):
         try:
             from langchain_chroma import Chroma  # type: ignore
         except Exception:
             from langchain_community.vectorstores import Chroma  # type: ignore
         from langchain_core.documents import Document  # type: ignore
-        from langchain_openai import OpenAIEmbeddings  # type: ignore
 
         lc_docs = [
             Document(page_content=doc.text, metadata=dict(doc.metadata, id=doc.id))
             for doc in documents
         ]
-        embeddings = OpenAIEmbeddings()
         vector_store = Chroma.from_documents(
             documents=lc_docs,
             embedding=embeddings,

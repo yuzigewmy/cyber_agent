@@ -1,7 +1,10 @@
 import axios from 'axios'
 
+const defaultApiBaseUrl =
+  typeof window === 'undefined' ? '' : `${window.location.protocol}//${window.location.hostname}:8000`
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '',
+  baseURL: import.meta.env.VITE_API_BASE_URL || defaultApiBaseUrl,
   timeout: 60000,
 })
 
